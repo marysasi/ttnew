@@ -1,0 +1,145 @@
+/* Modern College Timetable Generator Styles v3.0 */
+
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+:root {
+  --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: #f8fafc;
+  color: #0f172a;
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Drag and Drop visual feedback */
+.draggable-card {
+  cursor: grab;
+  user-select: none;
+  transition: transform 0.15s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.15s ease, opacity 0.15s ease;
+}
+
+.draggable-card:active {
+  cursor: grabbing;
+}
+
+.dragging {
+  opacity: 0.45;
+  transform: scale(0.96);
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.2);
+}
+
+.drop-target-hover {
+  outline: 2px dashed #4f46e5 !important;
+  outline-offset: -2px;
+  background-color: #eef2ff !important;
+}
+
+.drop-target-invalid {
+  outline: 2px dashed #ef4444 !important;
+  outline-offset: -2px;
+  background-color: #fef2f2 !important;
+}
+
+/* Disabled Slot Styling (e.g. Saturday Period 5) */
+.disabled-slot-pattern {
+  background: repeating-linear-gradient(
+    -45deg,
+    #f8fafc,
+    #f8fafc 8px,
+    #f1f5f9 8px,
+    #f1f5f9 16px
+  ) !important;
+  cursor: not-allowed !important;
+  opacity: 0.85;
+}
+
+/* Other Department Locked Badge & Card */
+.other-dept-locked-card {
+  background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%) !important;
+  border-color: #f59e0b !important;
+  color: #78350f !important;
+  box-shadow: 0 1px 3px rgba(245, 158, 11, 0.15);
+}
+
+/* Clash Pulse Animation */
+@keyframes clashPulse {
+  0%, 100% {
+    box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.9), 0 0 14px rgba(239, 68, 68, 0.4);
+    background-color: #fef2f2;
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.5), 0 0 20px rgba(239, 68, 68, 0.6);
+    background-color: #fee2e2;
+  }
+}
+
+.clash-highlight {
+  animation: clashPulse 1.8s infinite ease-in-out;
+  border-color: #ef4444 !important;
+}
+
+/* Print Styles */
+@media print {
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    font-size: 10pt;
+  }
+
+  .no-print,
+  nav,
+  header,
+  .stepper-nav,
+  .action-buttons,
+  .toast-container,
+  button:not(.allow-print) {
+    display: none !important;
+  }
+
+  .print-only {
+    display: block !important;
+  }
+
+  .print-container {
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  table {
+    page-break-inside: avoid;
+    border-collapse: collapse !important;
+    width: 100% !important;
+  }
+
+  th, td {
+    border: 1px solid #333333 !important;
+    padding: 5px 6px !important;
+    color: #000000 !important;
+  }
+
+  @page {
+    size: landscape;
+    margin: 0.8cm;
+  }
+}

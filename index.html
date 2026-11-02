@@ -565,6 +565,7 @@
                 sections={sections}
                 subjects={subjects}
                 faculty={faculty}
+                setFaculty={setFaculty}
                 prefixedSlots={prefixedSlots}
                 setPrefixedSlots={setPrefixedSlots}
                 scheduleConfig={scheduleConfig}
@@ -2328,6 +2329,7 @@
       sections,
       subjects,
       faculty,
+      setFaculty,
       prefixedSlots,
       setPrefixedSlots,
       scheduleConfig,
@@ -2342,19 +2344,20 @@
       const [showPrefixModal, setShowPrefixModal] = useState(false);
       const [showLockedSlotModal, setShowLockedSlotModal] = useState(false);
       const [showPrefixManagerModal, setShowPrefixManagerModal] = useState(false);
-      const [managerCategory, setManagerCategory] = useState('ALL'); // 'ALL' | 'LAB' | 'THEORY' | 'INSTITUTIONAL'
+      const [managerCategory, setManagerCategory] = useState('ALL'); // 'ALL' | 'LAB' | 'THEORY' | 'EXTERNAL'
       const [selectedLockedSlot, setSelectedLockedSlot] = useState(null);
       const [selectedSlotCoord, setSelectedSlotCoord] = useState({ day: 'Monday', periodNumber: 1 });
-      const [prefixMode, setPrefixMode] = useState('TYPE_A'); // 'TYPE_A' (Theory) | 'TYPE_B' (Lab) | 'TYPE_C' (Institutional)
+      const [prefixMode, setPrefixMode] = useState('TYPE_A'); // 'TYPE_A' (Theory) | 'TYPE_B' (Lab) | 'TYPE_C' (Other-Dept Load)
       const [academicForm, setAcademicForm] = useState({
         subjectId: '',
         duration: 1,
         facultyId: '',
       });
-      const [institutionalForm, setInstitutionalForm] = useState({
-        label: 'Unit Test / Assessment',
-        facultyId: '',
-        duration: 1,
+      const [externalLoadForm, setExternalLoadForm] = useState({
+        facultyId: faculty[0]?.id || '',
+        department: 'ECE',
+        subject: 'Digital Principles & Hardware',
+        hours: 1,
       });
 
       // Target section resolution (never null/undefined)
@@ -2763,24 +2766,53 @@
 
           showToast(`Locked ${duration} period(s) for ${sub.code} on ${selectedSlotCoord.day} Period(s) ${selectedSlotCoord.periodNumber}–${selectedSlotCoord.periodNumber + duration - 1}!`, 'success');
         } else {
-          // TYPE_C: Institutional
-          for (let offset = 0; offset < duration; offset++) {
-            const p = selectedSlotCoord.periodNumber + offset;
-            newSlotsToAdd.push({
-              id: 'pre-' + Math.random().toString(36).substring(2, 9),
-              sectionId: secIdToLock,
-              day: selectedSlotCoord.day,
-              periodNumber: p,
-              type: 'NON_ACADEMIC',
-              label: institutionalForm.label,
-              subjectId: null,
-              facultyId: institutionalForm.facultyId || null,
-              duration,
-              isLocked: true,
-            });
+          // TYPE_C: Other Department Faculty Load (Hard-Locked)
+          const facId = externalLoadForm.facultyId || faculty[0]?.id;
+          const facObj = faculty.find((f) => f.id === facId);
+          if (!facObj) {
+            showToast('Please select a valid faculty member.', 'warning');
+            return;
           }
-          setPrefixedSlots((prev) => [...prev, ...newSlotsToAdd]);
-          showToast(`Locked ${institutionalForm.label} on ${selectedSlotCoord.day} Period ${selectedSlotCoord.periodNumber}`, 'success');
+
+          const p = selectedSlotCoord.periodNumber;
+          if (window.TimetableCore.TallyEngine.isSlotDisabled(selectedSlotCoord.day, p, scheduleConfig)) {
+            showToast(`Cannot lock: ${selectedSlotCoord.day} Period ${p} is strictly disabled / unallocatable.`, 'rose');
+            return;
+          }
+
+          const existingExt = (facObj.externalLoads || []).find(
+            (ext) => ext.day === selectedSlotCoord.day && ext.period === p
+          );
+          if (existingExt) {
+            showToast(`Faculty ${facObj.name} is already locked for ${existingExt.department} dept on ${selectedSlotCoord.day} Period ${p}.`, 'warning');
+            return;
+          }
+
+          const newExt = {
+            id: 'ext-' + Math.random().toString(36).substring(2, 9),
+            day: selectedSlotCoord.day,
+            period: p,
+            department: externalLoadForm.department.trim() || 'Other',
+            subject: externalLoadForm.subject.trim() || 'External Course',
+            hours: 1,
+          };
+
+          if (setFaculty) {
+            setFaculty((prev) =>
+              prev.map((f) => {
+                if (f.id === facId) {
+                  const current = f.externalLoads || [];
+                  return { ...f, externalLoads: [...current, newExt] };
+                }
+                return f;
+              })
+            );
+          }
+
+          showToast(
+            `Hard-Locked Other-Department load for ${facObj.name} (${newExt.department} - ${newExt.subject}) on ${newExt.day} Period ${newExt.period}!`,
+            'success'
+          );
         }
 
         setShowPrefixModal(false);
@@ -3489,50 +3521,49 @@
                       type="button"
                       onClick={() => setPrefixMode('TYPE_C')}
                       className={`py-1.5 px-2 text-xs font-bold rounded-lg transition text-center flex items-center justify-center gap-1 ${
-                        prefixMode === 'TYPE_C' ? 'bg-purple-600 text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'
+                        prefixMode === 'TYPE_C' ? 'bg-amber-600 text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'
                       }`}
                     >
-                      <span>🏛️</span>
-                      <span>Institutional</span>
+                      <span>🔒</span>
+                      <span>Other Dept Load</span>
                     </button>
                   </div>
 
-                  {/* Section Selector */}
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-600 mb-1">Apply Lock To Section</label>
-                    <select
-                      value={targetSection}
-                      onChange={(e) => {
-                        const secId = e.target.value;
-                        setTargetSection(secId);
-                        if (secId !== 'ALL') {
-                          const targetSecObj = sections.find((s) => s.id === secId);
-                          const secAllocs = allocations.filter((a) => a.sectionId === secId);
-                          const relevantSubs = subjects.filter((s) => s.year === targetSecObj?.year || secAllocs.some((a) => a.subjectId === s.id));
-                          const firstSub = relevantSubs[0];
-                          if (firstSub) {
-                            const isLab = Boolean(firstSub.isLab || firstSub.labHoursPerWeek > 0);
-                            const alloc = secAllocs.find((a) => a.subjectId === firstSub.id);
-                            setAcademicForm({
-                              subjectId: firstSub.id,
-                              duration: isLab ? (firstSub.labHoursPerWeek || 3) : 1,
-                              facultyId: alloc?.facultyIds?.[0] || '',
-                            });
+                  {/* Section Selector (for Type A and Type B) */}
+                  {prefixMode !== 'TYPE_C' && (
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-600 mb-1">Apply Lock To Section</label>
+                      <select
+                        value={targetSection}
+                        onChange={(e) => {
+                          const secId = e.target.value;
+                          setTargetSection(secId);
+                          if (secId !== 'ALL') {
+                            const targetSecObj = sections.find((s) => s.id === secId);
+                            const secAllocs = allocations.filter((a) => a.sectionId === secId);
+                            const relevantSubs = subjects.filter((s) => s.year === targetSecObj?.year || secAllocs.some((a) => a.subjectId === s.id));
+                            const firstSub = relevantSubs[0];
+                            if (firstSub) {
+                              const isLab = Boolean(firstSub.isLab || firstSub.labHoursPerWeek > 0);
+                              const alloc = secAllocs.find((a) => a.subjectId === firstSub.id);
+                              setAcademicForm({
+                                subjectId: firstSub.id,
+                                duration: isLab ? (firstSub.labHoursPerWeek || 3) : 1,
+                                facultyId: alloc?.facultyIds?.[0] || '',
+                              });
+                            }
                           }
-                        }
-                      }}
-                      className="w-full text-xs font-semibold px-3 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 bg-white"
-                    >
-                      {prefixMode === 'TYPE_C' && (
-                        <option value="ALL">All Sections Simultaneously (College-wide)</option>
-                      )}
-                      {sections.map((s) => (
-                        <option key={s.id} value={s.id}>
-                          {s.year === 1 ? '1st' : s.year === 2 ? '2nd' : s.year === 3 ? '3rd' : '4th'} Yr - {s.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                        }}
+                        className="w-full text-xs font-semibold px-3 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 bg-white"
+                      >
+                        {sections.map((s) => (
+                          <option key={s.id} value={s.id}>
+                            {s.year === 1 ? '1st' : s.year === 2 ? '2nd' : s.year === 3 ? '3rd' : '4th'} Yr - {s.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
 
                   {/* Day and Period Selectors */}
                   <div className="grid grid-cols-2 gap-3">
@@ -3559,13 +3590,16 @@
                         className="w-full text-xs font-semibold px-3 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 bg-white"
                       >
                         {scheduleConfig.periods.map((p) => {
-                          const isSatP5 = selectedSlotCoord.day === 'Saturday' && p.id === 5;
+                          const isSatDisabled = selectedSlotCoord.day === 'Saturday' && (p.id >= 5 || (scheduleConfig.saturdayDisabledPeriods || [5, 6, 7]).includes(p.id));
                           return (
-                            <option key={p.id} value={p.id} disabled={isSatP5}>
-                              {p.name} ({p.time}) {isSatP5 ? '- Disabled' : ''}
+                            <option key={p.id} value={p.id} disabled={isSatDisabled}>
+                              {p.name} ({p.time}) {isSatDisabled ? '— Half Day / Closed' : ''}
                             </option>
                           );
                         })}
+                      </select>
+                    </div>
+                  </div>
                       </select>
                     </div>
                   </div>
@@ -3802,54 +3836,50 @@
                     </>
                   )}
 
-                  {/* TYPE C: INSTITUTIONAL */}
+                  {/* TYPE C: OTHER DEPARTMENT FACULTY LOAD LOCK */}
                   {prefixMode === 'TYPE_C' && (
                     <>
                       <div>
-                        <label className="block text-xs font-semibold text-slate-600 mb-1">Institutional Category</label>
+                        <label className="block text-xs font-semibold text-slate-600 mb-1">Select Faculty Member</label>
                         <select
-                          value={institutionalForm.label}
-                          onChange={(e) => setInstitutionalForm({ ...institutionalForm, label: e.target.value })}
-                          className="w-full text-xs font-semibold px-3 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 bg-white"
+                          value={externalLoadForm.facultyId}
+                          onChange={(e) => setExternalLoadForm({ ...externalLoadForm, facultyId: e.target.value })}
+                          className="w-full text-xs font-semibold px-3 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-amber-500 bg-white"
                         >
-                          <option value="Unit Test / Assessment">Unit Test / Assessment</option>
-                          <option value="Library & Digital Self-Study">Library & Digital Self-Study</option>
-                          <option value="Technical Seminar / Placement Training">Technical Seminar / Placement Training</option>
-                          <option value="Value Added Course / NPTEL">Value Added Course / NPTEL</option>
-                          <option value="Sports & Physical Training">Sports & Physical Training</option>
-                          <option value="Class Mentor & Counselor Hour">Class Mentor & Counselor Hour</option>
+                          {faculty.map((f) => (
+                            <option key={f.id} value={f.id}>
+                              {f.name} ({f.department} - {f.designation})
+                            </option>
+                          ))}
                         </select>
                       </div>
 
                       <div className="grid grid-cols-2 gap-3">
                         <div>
-                          <label className="block text-xs font-semibold text-slate-600 mb-1">Duration</label>
-                          <select
-                            value={institutionalForm.duration}
-                            onChange={(e) => setInstitutionalForm({ ...institutionalForm, duration: Number(e.target.value) })}
-                            className="w-full text-xs font-semibold px-3 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 bg-white"
-                          >
-                            <option value={1}>1 Period</option>
-                            <option value={2}>2 Continuous Periods</option>
-                            <option value={3}>3 Continuous Periods</option>
-                          </select>
+                          <label className="block text-xs font-semibold text-slate-600 mb-1">Target Outside Department</label>
+                          <input
+                            type="text"
+                            value={externalLoadForm.department}
+                            onChange={(e) => setExternalLoadForm({ ...externalLoadForm, department: e.target.value })}
+                            placeholder="e.g. ECE, MECH, CIVIL"
+                            className="w-full text-xs font-semibold px-3 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-amber-500 bg-white"
+                          />
                         </div>
-
                         <div>
-                          <label className="block text-xs font-semibold text-slate-600 mb-1">Incharge Faculty (Optional)</label>
-                          <select
-                            value={institutionalForm.facultyId}
-                            onChange={(e) => setInstitutionalForm({ ...institutionalForm, facultyId: e.target.value })}
-                            className="w-full text-xs font-semibold px-3 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 bg-white"
-                          >
-                            <option value="">No Faculty Assigned</option>
-                            {faculty.map((f) => (
-                              <option key={f.id} value={f.id}>
-                                {f.name} ({f.department})
-                              </option>
-                            ))}
-                          </select>
+                          <label className="block text-xs font-semibold text-slate-600 mb-1">Course / Assignment</label>
+                          <input
+                            type="text"
+                            value={externalLoadForm.subject}
+                            onChange={(e) => setExternalLoadForm({ ...externalLoadForm, subject: e.target.value })}
+                            placeholder="e.g. Digital Principles"
+                            className="w-full text-xs font-semibold px-3 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-amber-500 bg-white"
+                          />
                         </div>
+                      </div>
+
+                      <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 text-amber-900 text-xs flex items-center gap-2">
+                        <span className="font-bold">🔒 Hard Lock Barrier:</span>
+                        <span>This period will be hard-locked department-wide with badge <strong>OTHER DEPT LOAD (LOCKED)</strong>. Zero class collision guaranteed.</span>
                       </div>
                     </>
                   )}
